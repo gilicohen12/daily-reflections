@@ -31,10 +31,12 @@ export function hasContent(entry: DayEntry): boolean {
 const SYSTEM_INSTRUCTION =
   "You help a yoga teacher turn their private daily reflection into teaching " +
   "material. From the reflection, craft exactly 5 short ideas or phrases — " +
-  "each a single line under about 12 words — that they can speak or weave " +
-  "into a class as a philosophy, theme, or intention. Make them warm, " +
-  "grounded, and evocative, inspired by the reflection but never quoting the " +
-  "person's raw words verbatim. Avoid clichés where you can.";
+  "each a single line under about 20 words — that they can speak or weave " +
+  "into a class as a philosophy, theme, or intention. Stay close to the " +
+  "teacher's own voice: reuse their vocabulary, phrasing, and imagery, and " +
+  "echo their exact words where they land well, so the phrases sound like the " +
+  "teacher wrote them. Keep them warm, grounded, and evocative. Avoid clichés " +
+  "and generic spiritual filler.";
 
 // Sends the day's reflection to Gemini and returns 5 short class-ready phrases.
 // Throws with a readable message on any failure.
