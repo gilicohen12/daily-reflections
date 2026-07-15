@@ -1,11 +1,6 @@
 import { useState } from "react";
-import type { DayEntry } from "../storage";
-import {
-  distillClassIdeas,
-  getApiKey,
-  hasContent,
-  setApiKey,
-} from "../gemini";
+import { isFavorite, toggleFavorite, type DayEntry } from "../storage";
+import { distillClassIdeas, getApiKey, hasContent, setApiKey } from "../gemini";
 
 type Status = "idle" | "need-key" | "loading" | "done" | "error";
 
@@ -16,8 +11,14 @@ export function ClassIdeas({ entry }: { entry: DayEntry }) {
   const [ideas, setIdeas] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [keyInput, setKeyInput] = useState("");
+  const [, bump] = useState(0); // re-render after a favorite toggle
 
   const canRun = hasContent(entry);
+
+  function toggleFav(text: string) {
+    toggleFavorite(text);
+    bump((n) => n + 1);
+  }
 
   async function generate() {
     const key = getApiKey();
@@ -75,7 +76,7 @@ export function ClassIdeas({ entry }: { entry: DayEntry }) {
               onClick={saveKeyAndRun}
               disabled={!keyInput.trim()}
             >
-              Save & distill
+              Save & generate
             </button>
             <button className="btn-ghost" onClick={() => setStatus("idle")}>
               Cancel
@@ -84,13 +85,27 @@ export function ClassIdeas({ entry }: { entry: DayEntry }) {
         </div>
       ) : status === "done" ? (
         <>
-          <h2 className="ideas-title">For your class</h2>
+          <h2 className="ideas-title">Daily class inspiration ✨</h2>
+          <p className="ideas-hint">Tap a phrase to save it to Favorites.</p>
           <ul className="ideas-list">
-            {ideas.map((idea, i) => (
-              <li key={i} className="idea">
-                {idea}
-              </li>
-            ))}
+            {ideas.map((idea, i) => {
+              const fav = isFavorite(idea);
+              return (
+                <li key={i}>
+                  <button
+                    className={`idea idea-toggle ${fav ? "is-fav" : ""}`}
+                    onClick={() => toggleFav(idea)}
+                    aria-pressed={fav}
+                    aria-label={fav ? "Remove from favorites" : "Save to favorites"}
+                  >
+                    <span className="idea-text">{idea}</span>
+                    <span className="idea-star" aria-hidden="true">
+                      {fav ? "★" : "☆"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <div className="ideas-actions">
             <button className="btn-ghost" onClick={generate}>
@@ -106,8 +121,8 @@ export function ClassIdeas({ entry }: { entry: DayEntry }) {
             disabled={!canRun || status === "loading"}
           >
             {status === "loading"
-              ? "Distilling…"
-              : "✦ Distill into class ideas"}
+              ? "Insight is coming…"
+              : "✦ Generate class ideas"}
           </button>
           {!canRun && (
             <p className="ideas-hint">Write something above first.</p>

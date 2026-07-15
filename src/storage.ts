@@ -50,3 +50,38 @@ export function answersForPrompt(promptId: string): PromptAnswer[] {
     .map((date) => ({ date, text: loadEntry(date)[promptId] ?? "" }))
     .filter((a) => a.text.trim().length > 0);
 }
+
+// Favorite phrases the user has starred from generated class ideas.
+const FAVORITES_KEY = "favorites";
+
+export interface Favorite {
+  text: string;
+  savedAt: number; // epoch ms, for newest-first ordering
+}
+
+export function getFavorites(): Favorite[] {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    return raw ? (JSON.parse(raw) as Favorite[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isFavorite(text: string): boolean {
+  return getFavorites().some((f) => f.text === text);
+}
+
+// Adds or removes a phrase; returns the resulting favorited state.
+export function toggleFavorite(text: string): boolean {
+  const favorites = getFavorites();
+  const index = favorites.findIndex((f) => f.text === text);
+  if (index >= 0) {
+    favorites.splice(index, 1);
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+    return false;
+  }
+  favorites.unshift({ text, savedAt: Date.now() });
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+  return true;
+}

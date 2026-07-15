@@ -3,7 +3,10 @@
 import { PROMPTS } from "./prompts";
 import type { DayEntry } from "./storage";
 
-const MODEL = "gemini-2.5-flash";
+// Tried in order; the first the key can use wins. "gemini-flash-latest" is a
+// rolling alias Google keeps pointed at the current Flash model, so it won't
+// break when a specific version is retired. The pinned model is a fallback.
+const MODELS = ["gemini-flash-latest", "gemini-2.0-flash"];
 const KEY_STORAGE = "gemini-api-key";
 
 export function getApiKey(): string {
@@ -42,56 +45,66 @@ export async function distillClassIdeas(
   const text = entryToText(entry);
   if (!text) throw new Error("Nothing written yet today.");
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(
-    apiKey,
-  )}`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-      contents: [{ parts: [{ text: `Today's reflection:\n\n${text}` }] }],
-      generationConfig: {
-        temperature: 0.9,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "ARRAY",
-          items: { type: "STRING" },
-          minItems: 5,
-          maxItems: 5,
-        },
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+    contents: [{ parts: [{ text: `Today's reflection:\n\n${text}` }] }],
+    generationConfig: {
+      temperature: 0.9,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: { type: "STRING" },
+        minItems: 5,
+        maxItems: 5,
       },
-    }),
+    },
   });
 
-  if (!res.ok) {
-    let detail = `${res.status}`;
-    try {
-      const err = await res.json();
-      detail = err?.error?.message ?? detail;
-    } catch {
-      /* keep status */
+  let lastError = "";
+  for (let i = 0; i < MODELS.length; i++) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELS[i]}:generateContent?key=${encodeURIComponent(
+      apiKey,
+    )}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        detail = (await res.json())?.error?.message ?? detail;
+      } catch {
+        /* keep status */
+      }
+      if (res.status === 400 && /api key/i.test(detail)) {
+        throw new Error("That API key was rejected. Check it and try again.");
+      }
+      // If this model is gone/unusable, fall through to the next candidate.
+      const modelGone =
+        res.status === 404 ||
+        /not available|not found|not supported|no longer/i.test(detail);
+      lastError = detail;
+      if (modelGone && i < MODELS.length - 1) continue;
+      throw new Error(`Gemini error: ${detail}`);
     }
-    throw new Error(
-      res.status === 400 && /api key/i.test(detail)
-        ? "That API key was rejected. Check it and try again."
-        : `Gemini error: ${detail}`,
-    );
+
+    const data = await res.json();
+    const raw: string | undefined =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!raw) throw new Error("Gemini returned an empty response.");
+
+    let ideas: unknown;
+    try {
+      ideas = JSON.parse(raw);
+    } catch {
+      throw new Error("Could not parse Gemini's response.");
+    }
+    if (!Array.isArray(ideas)) throw new Error("Unexpected response format.");
+
+    return ideas.map((idea) => String(idea).trim()).filter(Boolean);
   }
 
-  const data = await res.json();
-  const raw: string | undefined =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!raw) throw new Error("Gemini returned an empty response.");
-
-  let ideas: unknown;
-  try {
-    ideas = JSON.parse(raw);
-  } catch {
-    throw new Error("Could not parse Gemini's response.");
-  }
-  if (!Array.isArray(ideas)) throw new Error("Unexpected response format.");
-
-  return ideas.map((i) => String(i).trim()).filter(Boolean);
+  throw new Error(`Gemini error: ${lastError || "no usable model."}`);
 }
